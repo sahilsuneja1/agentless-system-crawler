@@ -8,6 +8,8 @@ import mock
 import utils.dockerutils
 import dockercontainer
 
+import plugins_manager
+
 # Tests dockercontainer._get_logfiles_list
 # the log file, test1.log is in a host directory
 # mounted as volume
@@ -66,6 +68,8 @@ class DockerContainerTests(unittest.TestCase):
             "docker_image_registry": "image_registry",
             "owner_namespace": "owner_namespace",
             "NetworkSettings": {}}
+
+        plugins_manager.runtime_env = None
 
         self.docker_container = \
             dockercontainer.DockerContainer(inspect['Id'], inspect)
