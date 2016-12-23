@@ -1,8 +1,0 @@
-[Core]
-Name = Kubernetes Environment
-Module = kubernetes_environment
-
-[Documentation]
-Author = IBM
-Version = 0.1
-Description = Kubernetes environment
