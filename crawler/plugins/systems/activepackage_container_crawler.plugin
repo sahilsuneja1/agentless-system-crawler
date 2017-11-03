@@ -1,0 +1,8 @@
+[Core]
+Name = activepackage_container
+Module = activepackage_container_crawler
+
+[Documentation]
+Author = IBM
+Version = 0.1
+Description = Active package (packages currently being used) crawling function for containers
