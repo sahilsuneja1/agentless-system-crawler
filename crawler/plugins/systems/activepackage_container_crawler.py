@@ -1,6 +1,7 @@
 import logging
 import os
 import psutil
+import subprocess
 
 from collections import namedtuple
 from utils import osinfo
@@ -10,18 +11,43 @@ from utils.dockerutils import (exec_dockerinspect,
                                get_docker_container_rootfs_path)
 from utils.misc import join_abs_paths
 from utils.namespace import run_as_another_namespace, ALL_NAMESPACES
-from utils.features import PackageFeature
-from utils.misc import subprocess_run
 
 logger = logging.getLogger('crawlutils')
 
-PackageFeature = namedtuple('PackageFeature', ['pkgname', 'pkgarchitecture'])
+ActivePackageFeature = namedtuple('ActivePackageFeature', ['pkgname', 'pkgarchitecture'])
 
 class ActivepackageContainerCrawler(IContainerCrawler):
 
     def get_feature(self):
         return 'activepackage'
 
+    def subprocess_run(self, cmd, ignore_failure=True, shell=False):
+        """
+        Runs cmd_string as a shell command. It returns stdout as a string, and
+        raises RuntimeError if the return code is not equal to `good_rc`.
+
+        It returns the tuple: (stdout, stderr, returncode)
+        Can raise AttributeError or RuntimeError:
+        """
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                shell=shell,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+            out, err = proc.communicate()
+            rc = proc.returncode
+
+        except OSError as exc:
+            raise RuntimeError('Failed to run ' + cmd + ': [Errno: %d] ' %
+                               exc.errno + exc.strerror + ' [Exception: ' +
+                               type(exc).__name__ + ']')
+        if (not ignore_failure) and (rc != 0):
+            raise RuntimeError('(%s) failed with rc=%s: %s' %
+                               (cmd, rc, err))
+        return (out, err)
+
+    
     def get_dpkg_package(
             self,
             root_dir='/',
@@ -40,21 +66,18 @@ class ActivepackageContainerCrawler(IContainerCrawler):
                 root_dir +
                 '.')
 
-        # Update for a different route.
-
         dbpath = os.path.join(root_dir, dbpath)
 
-        #TODO: call subprocess.Popen instead and check for err, skip htose
-        output = subprocess_run(['dpkg', '-S',
+        (output, err) = self.subprocess_run(['dpkg', '-S',
                                  '--admindir={0}'.format(dbpath),
                                  filename],
                                 shell=False)
-        pkg = output.strip('\n')
-        if pkg:
-            name = pkg.split(':')[0]
-            arch = pkg.split(':')[1]
-            #yield (name, PackageFeature(name, arch))
-            return (name, PackageFeature(name, arch))
+        if not err:                        
+            pkg = output.strip('\n')
+            if pkg:
+                name = pkg.split(':')[0]
+                arch = pkg.split(':')[1]
+                return (name, ActivePackageFeature(name, arch))
 
     #TODO: store only unique packages
     def get_dpkg_packages(
@@ -64,11 +87,13 @@ class ActivepackageContainerCrawler(IContainerCrawler):
             installed_since=0,
             filelist=[]):
         for filename in filelist:
-            yield self.get_dpkg_package(
+            pkg = self.get_dpkg_package(
                     root_dir,
                     dbpath,
                     installed_since,
                     filename)
+            if pkg:
+                yield pkg
 
 
     def _get_package_manager(self, root_dir):
@@ -97,7 +122,7 @@ class ActivepackageContainerCrawler(IContainerCrawler):
         # package attributes: ["installed", "name", "size", "version"]
 
         import pdb
-        pdb.set_trace()
+        #pdb.set_trace()
         logger.debug('Crawling Packages')
 
         pkg_manager = self._get_package_manager(root_dir)
@@ -107,7 +132,7 @@ class ActivepackageContainerCrawler(IContainerCrawler):
                 dbpath = dbpath or 'var/lib/dpkg'
                 for (key, feature) in self.get_dpkg_packages(
                         root_dir, dbpath, installed_since, filelist):
-                    yield (key, feature, 'package')
+                    yield (key, feature, 'activepackage')
             else:
                 logger.warning('Unsupported package manager for Linux distro')
         except Exception as e:
